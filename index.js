@@ -1,5 +1,5 @@
 const express = require('express');
-const { createProxyMiddleware } = require('http-proxy-middleware');
+const { createProxyMiddleware, responseInterceptor } = require('http-proxy-middleware');
 const fs = require('fs');
 const winston = require('winston');
 const dotenv = require('dotenv')
@@ -77,7 +77,11 @@ const proxyErrorHandler = (err, req, res, target) => {
       'Content-Type': 'text/plain',
     });
     res.end('Something went wrong. And we are reporting a custom error message.');
-  }
+}
+
+const proxyResHandler = responseInterceptor( (responseBuffer, proxyRes, req, res) => {
+    // res.setHeader('HPM-Header', 'Intercepted by HPM'); // Set a new header and value
+})
 
 
 const options = {
@@ -85,6 +89,11 @@ const options = {
         return req.url;
     },
     logProvider,
+    selfHandleResponse: true, // res.end() will be called internally by responseInterceptor()
+    onProxyRes: responseInterceptor(async (responseBuffer, proxyRes, req, res) => {
+        res.setHeader('Connection', 'close'); // Set a new header and value
+        return responseBuffer
+    }),
     onProxyReq: proxyReqHandler,
     onError: proxyErrorHandler,
 }
