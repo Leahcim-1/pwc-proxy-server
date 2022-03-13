@@ -1,5 +1,6 @@
 const express = require('express');
 const { createProxyMiddleware, responseInterceptor } = require('http-proxy-middleware');
+const http = require('http');
 const fs = require('fs');
 const winston = require('winston');
 const dotenv = require('dotenv')
@@ -16,6 +17,12 @@ const AUTH = JSON.parse(fs.readFileSync('auth-list.json', "utf8"));
 const app = express()
 const host = ENV.RUN_ENV === 'prod' ? '0.0.0.0' : '127.0.0.1'
 const port =ENV.RUN_ENV === 'prod' ? 9527 : 3000
+
+const keepAliveAgent = new http.Agent({
+    keepAlive: true,
+    maxSockets: 100,
+    keepAliveMsecs: 10000,
+})
 
 const logger = new (winston.Logger)({
     transports: [
@@ -79,21 +86,13 @@ const proxyErrorHandler = (err, req, res, target) => {
     res.end('Something went wrong. And we are reporting a custom error message.');
 }
 
-const proxyResHandler = responseInterceptor( (responseBuffer, proxyRes, req, res) => {
-    // res.setHeader('HPM-Header', 'Intercepted by HPM'); // Set a new header and value
-})
-
-
 const options = {
     router: function (req) {
         return req.url;
     },
     logProvider,
     selfHandleResponse: true, // res.end() will be called internally by responseInterceptor()
-    onProxyRes: responseInterceptor(async (responseBuffer, proxyRes, req, res) => {
-        res.setHeader('Connection', 'close'); // Set a new header and value
-        return responseBuffer
-    }),
+    agent: keepAliveAgent,
     onProxyReq: proxyReqHandler,
     onError: proxyErrorHandler,
 }
