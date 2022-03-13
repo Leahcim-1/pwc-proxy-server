@@ -1,3 +1,4 @@
 auth-list.json
 node_modules
 proxy.log
+.env

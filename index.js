@@ -2,6 +2,11 @@ const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const fs = require('fs');
 const winston = require('winston');
+const dotenv = require('dotenv')
+
+const ENV = dotenv.config({
+    path: './.env'
+}).parsed
 
 
 if (!fs.existsSync('auth-list.json')) throw Error("No auth files");
@@ -9,7 +14,8 @@ if (!fs.existsSync('auth-list.json')) throw Error("No auth files");
 const AUTH = JSON.parse(fs.readFileSync('auth-list.json', "utf8"));
 
 const app = express()
-const port = 3000
+const host = ENV.RUN_ENV === 'prod' ? '0.0.0.0' : '127.0.0.1'
+const port =ENV.RUN_ENV === 'prod' ? 9527 : 3000
 
 const logger = new (winston.Logger)({
     transports: [
@@ -17,6 +23,11 @@ const logger = new (winston.Logger)({
             name: 'error-file',
             filename: 'error.log',
             level: 'error'
+        }),
+        new (winston.transports.File)({
+            name: 'warn-file',
+            filename: 'warn.log',
+            level: 'warn'
         }),
         new (winston.transports.File)({ filename: 'proxy.log' })
     ]
@@ -41,7 +52,11 @@ function logProvider() {
 
 app.use((req, _, next) => {
     const { headers } = req;
-    if (!headers['proxy-authorization']) return;
+    if (!headers['proxy-authorization']) {
+        logger.warn(`Illegal Attempted: ${req.url}`)
+        console.warn(`Illegal Attempted: ${req.url}`)
+        return
+    };
     if (!headers['proxy-authorization'].includes('Basic ')) return;
     const authCode = headers['proxy-authorization'].split('Basic ')[1];
     if (!authCode) return;
@@ -52,10 +67,12 @@ app.use((req, _, next) => {
 
 const proxyReqHandler = (proxyReq, req, res, target) => {
     logger.info(`dest-url: ${req.url}`)
+    console.log(`dest-url: ${req.url}`)
 }
 
 const proxyErrorHandler = (err, req, res, target) => {
     logger.error(err);
+    console.log(err)
     res.writeHead(500, {
       'Content-Type': 'text/plain',
     });
@@ -76,6 +93,6 @@ const proxy = createProxyMiddleware(options)
 
 app.use('/', proxy)
 
-app.listen(port, () => {
-    console.log(`PWC Proxy app listening on port ${port}`)
+app.listen(port, host, () => {
+    console.log(`PWC Proxy app listening on ${host}:${port}`)
 })
