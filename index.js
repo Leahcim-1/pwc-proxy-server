@@ -1,5 +1,5 @@
 const express = require('express');
-const { createProxyMiddleware, responseInterceptor } = require('http-proxy-middleware');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 const http = require('http');
 const fs = require('fs');
 const winston = require('winston');
@@ -9,6 +9,15 @@ const ENV = dotenv.config({
     path: './.env'
 }).parsed
 
+const agent = new http.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 60000,
+    maxSockets: 100,
+})
+
+const whitelist = [
+    'dns.weixin.qq.com',
+]
 
 if (!fs.existsSync('auth-list.json')) throw Error("No auth files");
 
@@ -59,9 +68,15 @@ function logProvider() {
 
 app.use((req, _, next) => {
     const { headers } = req;
+    if (whitelist.includes(headers.host)) {
+        next();
+        return;
+    }
+
     if (!headers['proxy-authorization']) {
-        logger.warn(`Illegal Attempted: ${req.url}`)
-        console.warn(`Illegal Attempted: ${req.url}`)
+        console.log(req.headers)
+        logger.warn(`Illegal Attempted: ${req.originalUrl}`)
+        console.warn(`Illegal Attempted: ${req.originalUrl}`)
         return
     };
     if (!headers['proxy-authorization'].includes('Basic ')) return;
@@ -88,11 +103,15 @@ const proxyErrorHandler = (err, req, res, target) => {
 
 const options = {
     router: function (req) {
-        return req.url;
+        return req.originalUrl;
     },
     logProvider,
-    selfHandleResponse: true, // res.end() will be called internally by responseInterceptor()
-    agent: keepAliveAgent,
+    // selfHandleResponse: true, // res.end() will be called internally by responseInterceptor()
+    // onProxyRes: responseInterceptor(async (responseBuffer, proxyRes, req, res) => {
+    //     res.setHeader('Connection', 'close'); // Set a new header and value
+    //     return responseBuffer
+    // }),
+    agent,
     onProxyReq: proxyReqHandler,
     onError: proxyErrorHandler,
 }
